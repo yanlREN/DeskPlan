@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>DeskPlan</AssemblyName>
+    <ApplicationIcon>Assets/deskplan.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../DeskPlan.Core/DeskPlan.Core.csproj" />
+    <ProjectReference Include="../DeskPlan.Infrastructure/DeskPlan.Infrastructure.csproj" />
+    <ProjectReference Include="../DeskPlan.Windows/DeskPlan.Windows.csproj" />
+  </ItemGroup>
+  <ItemGroup><Resource Include="Assets/deskplan.ico" /></ItemGroup>
+</Project>

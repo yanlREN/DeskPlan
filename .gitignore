@@ -1,0 +1,15 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+artifacts/
+*.user
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.log
+.tools/
+TestResults/
+*.zip
+*.bak

@@ -1,0 +1,24 @@
+name: 问题反馈
+description: 报告窗口、计划、数据或提醒的问题
+title: "[Bug] "
+body:
+  - type: input
+    id: environment
+    attributes:
+      label: 应用与系统版本
+      description: 在设置页查看 DeskPlan 版本，补充 Windows 版本和显示模式。
+      placeholder: DeskPlan 0.1.2 / Windows 11 / 悬浮模式
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请从启动程序开始描述；同时写明预期结果和实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 截图或日志（可选）
+      description: 请先去掉私人信息，不要上传个人数据库、完整备份、密码或令牌。
