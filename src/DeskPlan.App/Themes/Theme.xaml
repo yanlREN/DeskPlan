@@ -76,4 +76,11 @@
     </ControlTemplate></Setter.Value></Setter>
   </Style>
   <Style TargetType="ScrollViewer"><Setter Property="PanningMode" Value="VerticalOnly"/></Style>
+  <Style x:Key="ResizeHandle" TargetType="Thumb">
+    <Setter Property="Focusable" Value="False"/>
+    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Thumb">
+      <!-- Non-zero alpha keeps these hit targets active on a layered transparent window. -->
+      <Border Background="#01000000"/>
+    </ControlTemplate></Setter.Value></Setter>
+  </Style>
 </ResourceDictionary>

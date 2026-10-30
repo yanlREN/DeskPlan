@@ -93,6 +93,11 @@ public static class WindowGeometry
         NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GwlExStyle, new IntPtr((ex | NativeMethods.WsExToolWindow) & ~NativeMethods.WsExAppWindow));
     }
     public static double Scale(IntPtr hwnd) => Math.Max(96, NativeMethods.GetDpiForWindow(hwnd)) / 96.0;
+    public static WindowBounds WorkArea(IntPtr hwnd)
+    {
+        var area = Forms.Screen.FromHandle(hwnd).WorkingArea;
+        return new(area.Left, area.Top, area.Width, area.Height);
+    }
     // Positions are physical virtual-screen pixels; dimensions are WPF device-independent pixels.
     public static PlannerSettings Clamp(PlannerSettings settings, double scale)
     {
@@ -131,6 +136,8 @@ public static class WindowGeometry
     {
         var hwnd = new WindowInteropHelper(window).Handle;
         if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return settings;
-        return settings with { Left = rect.Left, Top = rect.Top, Width = window.ActualWidth, Height = window.ActualHeight };
+        // The native rectangle is current even when the last drag ends before WPF's next layout pass.
+        var scale = Scale(hwnd);
+        return settings with { Left = rect.Left, Top = rect.Top, Width = (rect.Right - rect.Left) / scale, Height = (rect.Bottom - rect.Top) / scale };
     }
 }

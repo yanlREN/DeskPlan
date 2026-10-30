@@ -1,11 +1,11 @@
 # DeskPlan 快速入门
 
-适用于 v0.1.2 · Windows 10 / 11 x64。
+适用于 v0.1.3 · Windows 10 / 11 x64。
 
 ## 1. 下载并打开
 
 1. 打开 [GitHub 下载页](https://github.com/yanlREN/DeskPlan/releases/latest)。
-2. 在 Assets 中下载 `DeskPlan-0.1.2-win-x64.zip`。`Source code` 是开发源码，不是可运行程序。
+2. 在 Assets 中下载 `DeskPlan-0.1.3-win-x64.zip`。`Source code` 是开发源码，不是可运行程序。
 3. 把 ZIP **完整解压**到一个长期保存的文件夹，如 `D:\Apps\DeskPlan`。
 4. 双击 `DeskPlan.exe`。无需另装 .NET，无需管理员权限，首次打开可能稍慢。
 5. 解压目录中的 `使用说明.html` 可以直接双击，用浏览器离线查看完整图文手册。
@@ -28,6 +28,7 @@
 
 ## 4. 回顾和备份
 
+- 拖动标题栏移动窗口；拖动四条边或四个角都能调整大小，松手自动保存。
 - 点 **▦** 查看每日、每周、每月统计，写下复盘总结，或导出 CSV。
 - 点 **⋯** → **导出 JSON 备份**，定期将备份保存到其他磁盘。
 - 数据在 `%LOCALAPPDATA%\DeskPlan`；升级替换程序不会自动清空数据。

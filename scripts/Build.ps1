@@ -19,7 +19,7 @@ try {
         $stage = Join-Path $script:ProjectRoot ('artifacts/package/' + [guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $stage | Out-Null
         Copy-Item -LiteralPath (Join-Path $OutputDirectory 'DeskPlan.exe') -Destination $stage
-        foreach ($doc in @('README.md', 'CHANGELOG.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+        foreach ($doc in @('README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
             Copy-Item -LiteralPath (Join-Path $script:ProjectRoot $doc) -Destination $stage
         }
         Copy-Item -LiteralPath (Join-Path $script:ProjectRoot 'docs') -Destination $stage -Recurse

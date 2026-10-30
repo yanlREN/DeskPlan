@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -39,6 +40,7 @@ public static class SmokeTest
             Check("desktop-or-visible-fallback", app.Widget.IsVisible && app.Widget.Host.IsHealthy(new WindowInteropHelper(app.Widget).Handle), app.Widget.Host.Name + " / " + app.DesktopFailure);
             checks.Add(new { name = "desktop-embedded", success = app.Widget.Host is DesktopWindowHost, detail = app.DesktopFailure });
             Capture(app.Widget, Path.Combine(folder, "widget-light.png"));
+            await VerifyResize(app, Check, "desktop");
             var ids = app.ViewModel.Tasks.Select(t => t.Id).ToArray();
             app.Widget.ScrollPosition = 70; await Task.Delay(50);
             var beforeScroll = app.Widget.ScrollPosition;
@@ -100,6 +102,7 @@ public static class SmokeTest
             var hwnd = new WindowInteropHelper(app.Widget).Handle;
             Check("floating-native-topmost", (NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GwlExStyle).ToInt64() & 8) != 0);
             Check("floating-not-taskbar", !app.Widget.ShowInTaskbar && (NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GwlExStyle).ToInt64() & NativeMethods.WsExToolWindow) != 0);
+            await VerifyResize(app, Check, "floating");
             var vm = app.ViewModel.Tasks.First(t => t.Progress != 100);
             var slider = Descendants<Slider>(app.Widget).Single(s => ReferenceEquals(s.DataContext, vm));
             slider.SetCurrentValue(Slider.ValueProperty, 100.0); app.Flush(); await Task.Delay(50);
@@ -148,6 +151,95 @@ public static class SmokeTest
         if (child.ExitCode != 0) throw new InvalidOperationException("Second instance exited with error.");
         await Task.Delay(150);
     }
+    private static async Task VerifyResize(AppController app, Action<string, bool, string?> check, string mode)
+    {
+        var window = app.Widget;
+        var hwnd = new WindowInteropHelper(window).Handle;
+        var scale = WindowGeometry.Scale(hwnd);
+        var area = WindowGeometry.WorkArea(hwnd);
+        var saved = WindowGeometry.Capture(window, app.Settings);
+        var baseline = saved with { Left = area.Left + 60, Top = area.Top + 60, Width = 400, Height = 540 };
+        var directions = new (string Name, ResizeEdges Edges, double X, double Y)[]
+        {
+            ("ResizeLeft", ResizeEdges.Left, 3, .5), ("ResizeRight", ResizeEdges.Right, -3, .5),
+            ("ResizeTop", ResizeEdges.Top, .5, 3), ("ResizeBottom", ResizeEdges.Bottom, .5, -3),
+            ("ResizeTopLeft", ResizeEdges.Top | ResizeEdges.Left, 8, 8),
+            ("ResizeTopRight", ResizeEdges.Top | ResizeEdges.Right, -8, 8),
+            ("ResizeBottomLeft", ResizeEdges.Bottom | ResizeEdges.Left, 8, -8),
+            ("ResizeBottomRight", ResizeEdges.Bottom | ResizeEdges.Right, -8, -8)
+        };
+        var hitTargets = true; var edgesCorrect = true; var persistence = true;
+        var details = new List<object>();
+        foreach (var direction in directions)
+        {
+            WindowGeometry.Place(window, window.Host, baseline); await Task.Delay(30);
+            var x = direction.X == .5 ? window.ActualWidth / 2 : direction.X < 0 ? window.ActualWidth + direction.X : direction.X;
+            var y = direction.Y == .5 ? window.ActualHeight / 2 : direction.Y < 0 ? window.ActualHeight + direction.Y : direction.Y;
+            var hit = window.InputHitTest(new Point(x, y)) as DependencyObject;
+            while (hit is not null && hit is not Thumb) hit = VisualTreeHelper.GetParent(hit);
+            hitTargets &= hit is Thumb thumb && thumb.Name == direction.Name;
+            NativeMethods.GetWindowRect(hwnd, out var start);
+            var origin = new NativeMethods.Point { X = start.Left + 50, Y = start.Top + 50 };
+            var dx = direction.Edges.HasFlag(ResizeEdges.Left) ? -24 : 24;
+            var dy = direction.Edges.HasFlag(ResizeEdges.Top) ? -24 : 24;
+            window.BeginResize(direction.Edges, origin);
+            window.ResizeTo(new() { X = origin.X + dx, Y = origin.Y + dy });
+            await Task.Delay(30); window.EndResize();
+            NativeMethods.GetWindowRect(hwnd, out var after);
+            var correct = Near(after.Left, start.Left + (direction.Edges.HasFlag(ResizeEdges.Left) ? dx : 0)) &&
+                Near(after.Right, start.Right + (direction.Edges.HasFlag(ResizeEdges.Right) ? dx : 0)) &&
+                Near(after.Top, start.Top + (direction.Edges.HasFlag(ResizeEdges.Top) ? dy : 0)) &&
+                Near(after.Bottom, start.Bottom + (direction.Edges.HasFlag(ResizeEdges.Bottom) ? dy : 0));
+            edgesCorrect &= correct;
+            var stored = app.Store.Settings();
+            persistence &= Near(stored.Left, after.Left) && Near(stored.Top, after.Top) &&
+                Near(stored.Width * scale, after.Right - after.Left) && Near(stored.Height * scale, after.Bottom - after.Top);
+            details.Add(new { direction.Name, correct });
+        }
+        check(mode + "-eight-resize-hit-targets", hitTargets, null);
+        check(mode + "-eight-directions-move-only-selected-edges", edgesCorrect, JsonSerializer.Serialize(details));
+        check(mode + "-resize-bounds-persist", persistence, null);
+
+        WindowGeometry.Place(window, window.Host, baseline); await Task.Delay(30);
+        NativeMethods.GetWindowRect(hwnd, out var initial);
+        var pointer = new NativeMethods.Point { X = initial.Left, Y = initial.Top };
+        window.BeginResize(ResizeEdges.Top | ResizeEdges.Left, pointer);
+        window.ResizeTo(new() { X = pointer.X + 10000, Y = pointer.Y + 10000 }); await Task.Delay(30);
+        NativeMethods.GetWindowRect(hwnd, out var minimum);
+        var limits = Near(minimum.Right, initial.Right) && Near(minimum.Bottom, initial.Bottom) &&
+            Near(minimum.Right - minimum.Left, window.MinWidth * scale) && Near(minimum.Bottom - minimum.Top, window.MinHeight * scale);
+        window.ResizeTo(pointer); await Task.Delay(30); window.EndResize();
+        NativeMethods.GetWindowRect(hwnd, out var restored);
+        check(mode + "-resize-minimum-and-return-without-drift", limits && restored.Equals(initial), null);
+
+        // Coalesced move messages must not lose the final screen displacement on mouse-up.
+        WindowGeometry.Place(window, window.Host, baseline); await Task.Delay(30);
+        NativeMethods.GetWindowRect(hwnd, out var fastStart);
+        var topLeft = (Thumb)window.FindName("ResizeTopLeft");
+        topLeft.RaiseEvent(new DragStartedEventArgs(8, 8));
+        topLeft.RaiseEvent(new DragCompletedEventArgs(12, 10, false));
+        var fastSaved = app.Store.Settings(); // Mouse-up must persist the final size without waiting for layout.
+        await Task.Delay(30);
+        NativeMethods.GetWindowRect(hwnd, out var fastEnd);
+        check(mode + "-fast-drag-completion-commits-final-position",
+            Near(fastEnd.Left, fastStart.Left + 12) && Near(fastEnd.Top, fastStart.Top + 10) &&
+            Near(fastEnd.Right, fastStart.Right) && Near(fastEnd.Bottom, fastStart.Bottom) &&
+            Near(fastSaved.Width * scale, fastEnd.Right - fastEnd.Left) && Near(fastSaved.Height * scale, fastEnd.Bottom - fastEnd.Top), null);
+
+        WindowGeometry.Place(window, window.Host, baseline); await Task.Delay(30);
+        NativeMethods.GetWindowRect(hwnd, out var eventStart);
+        topLeft.RaiseEvent(new DragStartedEventArgs(8, 8));
+        topLeft.RaiseEvent(new DragDeltaEventArgs(12 / scale, 10 / scale)); await Task.Delay(30);
+        // The Thumb moved with the window. This relative delta gives a total of 20 by 16 screen pixels.
+        topLeft.RaiseEvent(new DragDeltaEventArgs(8 / scale, 6 / scale)); await Task.Delay(30);
+        NativeMethods.GetWindowRect(hwnd, out var eventEnd);
+        topLeft.RaiseEvent(new DragCompletedEventArgs(20, 16, false));
+        check(mode + "-left-top-drag-event-coordinates-do-not-drift",
+            Near(eventEnd.Left, eventStart.Left + 20) && Near(eventEnd.Top, eventStart.Top + 16) &&
+            Near(eventEnd.Right, eventStart.Right) && Near(eventEnd.Bottom, eventStart.Bottom), null);
+        WindowGeometry.Place(window, window.Host, saved); await Task.Delay(30); app.SaveWindow();
+    }
+    private static bool Near(double a, double b) => Math.Abs(a - b) <= 1;
     private static void Capture(Window window, string path)
     {
         window.UpdateLayout();

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 using DeskPlan.App.ViewModels;
 using DeskPlan.Core;
@@ -15,6 +16,12 @@ public partial class MainWindow : Window
     private NativeMethods.Point dragOrigin;
     private PlannerSettings? dragBounds;
     private Point gripOrigin;
+    private ResizeEdges resizeEdges;
+    private NativeMethods.Point resizeOrigin;
+    private Point resizeThumbOrigin;
+    private WindowBounds? resizeStart;
+    private WindowBounds resizeWorkArea;
+    private double resizeScale;
     public IWindowHost Host { get; set; } = new FloatingWindowHost(false);
     public bool InternalClose { get; set; }
     public MainViewModel Model => controller.ViewModel;
@@ -52,12 +59,51 @@ public partial class MainWindow : Window
     }
     private void HeaderUp(object sender, MouseButtonEventArgs e)
     { if (dragBounds is null) return; Header.ReleaseMouseCapture(); dragBounds = null; controller.SaveWindow(); }
+    private void ResizeStarted(object sender, DragStartedEventArgs e)
+    {
+        if (sender is Thumb { Tag: string direction } thumb && Enum.TryParse<ResizeEdges>(direction, out var edges))
+        {
+            resizeThumbOrigin = new(e.HorizontalOffset, e.VerticalOffset);
+            BeginResize(edges, ScreenPoint(thumb.PointToScreen(resizeThumbOrigin)));
+        }
+        e.Handled = true;
+    }
     private void ResizeDelta(object sender, DragDeltaEventArgs e)
     {
-        var b = WindowGeometry.Capture(this, controller.Settings);
-        WindowGeometry.Place(this, Host, b with { Width = Math.Max(MinWidth, ActualWidth + e.HorizontalChange), Height = Math.Max(MinHeight, ActualHeight + e.VerticalChange) });
+        if (sender is Thumb thumb)
+            ResizeTo(ScreenPoint(thumb.PointToScreen(new(resizeThumbOrigin.X + e.HorizontalChange, resizeThumbOrigin.Y + e.VerticalChange))));
+        e.Handled = true;
     }
-    private void ResizeDone(object sender, DragCompletedEventArgs e) => controller.SaveWindow();
+    private void ResizeDone(object sender, DragCompletedEventArgs e)
+    {
+        // Thumb reports the final total in screen pixels. Apply it even if move messages were
+        // coalesced during a fast drag, and use the event position rather than a later global cursor.
+        if (!e.Canceled && resizeStart is not null)
+            ResizeTo(new() { X = resizeOrigin.X + (int)Math.Round(e.HorizontalChange), Y = resizeOrigin.Y + (int)Math.Round(e.VerticalChange) });
+        EndResize(); e.Handled = true;
+    }
+    private static NativeMethods.Point ScreenPoint(Point point) => new() { X = (int)Math.Round(point.X), Y = (int)Math.Round(point.Y) };
+    // Share the same screen-coordinate path with the isolated window integration harness.
+    internal void BeginResize(ResizeEdges edges, NativeMethods.Point point)
+    {
+        controller.Flush();
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (!NativeMethods.GetWindowRect(hwnd, out var rect)) return;
+        resizeEdges = edges; resizeOrigin = point; resizeScale = WindowGeometry.Scale(hwnd);
+        resizeStart = new(rect.Left, rect.Top, rect.Right - rect.Left, rect.Bottom - rect.Top);
+        resizeWorkArea = WindowGeometry.WorkArea(hwnd);
+    }
+    internal void ResizeTo(NativeMethods.Point point)
+    {
+        if (resizeStart is not { } start) return;
+        // Thumb-relative deltas change when resizing the left/top edge. Use the original screen
+        // pointer and rectangle for the whole gesture to avoid feedback, drift and DPI scaling errors.
+        var bounds = WindowResize.Calculate(start, resizeEdges, point.X - resizeOrigin.X, point.Y - resizeOrigin.Y,
+            MinWidth * resizeScale, MinHeight * resizeScale, resizeWorkArea);
+        WindowGeometry.Place(this, Host, controller.Settings with
+        { Left = bounds.Left, Top = bounds.Top, Width = bounds.Width / resizeScale, Height = bounds.Height / resizeScale });
+    }
+    internal void EndResize() { resizeStart = null; controller.SaveWindow(); }
     private void SwitchMode(object sender, RoutedEventArgs e) => controller.SwitchMode();
     private void ReturnToDesktop(object sender, RoutedEventArgs e) => controller.ReturnToDesktop();
     private void OpenReview(object sender, RoutedEventArgs e) => controller.OpenReview();
